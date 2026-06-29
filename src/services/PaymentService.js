@@ -1,6 +1,15 @@
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
+const NotifcationService = require('./NotifcationService')
 const { getOrSetCache, deleteCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+const notifySafely = async (payload) => {
+    try {
+        await NotifcationService.createNotification(payload)
+    } catch (err) {
+        console.error('[PaymentService] notify failed:', err.message)
+    }
+}
 
 const TTL = 300
 const detailKey = (id) => `payment:${id}`
@@ -31,7 +40,7 @@ class PaymentService {
         })
     }
     static async markPaid(id , paidAt) {
-        return await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             const payment = await tx.payment.findUnique({ where : { id } })
             if(!payment) {
                 throw new AppError('Payment is not found' , 404)
@@ -41,13 +50,26 @@ class PaymentService {
                 data : { status : 'PAID' , paidAt : paidAt || new Date() }
             })
             await syncOrderPaymentStatus(tx , payment.orderId)
-            return updated
-        }).then(async (updated) => {
-            await deleteCache(detailKey(id))
-            await deleteCache(byOrderKey(updated.orderId))
-            await deleteCacheByPattern('payment:list:*')
-            return updated
+            const order = await tx.importOrder.findUnique({ where : { id : payment.orderId } })
+            return { updated, order }
         })
+        await deleteCache(detailKey(id))
+        await deleteCache(byOrderKey(result.updated.orderId))
+        await deleteCacheByPattern('payment:list:*')
+
+        if(result.order) {
+            await notifySafely({
+                employeeId: result.order.createdById,
+                title: 'Đã nhận thanh toán',
+                message: `Đơn hàng ${result.order.orderNumber} đã nhận thanh toán ${result.updated.amount} ${result.updated.currency}`,
+                type: 'PAYMENT_RECEIVED',
+                priority: 'MEDIUM',
+                referenceId: result.updated.orderId,
+                referenceType: 'IMPORT_ORDER',
+                url: `/orders/${result.updated.orderId}`,
+            })
+        }
+        return result.updated
     }
     static async updatePayment(id , data) {
         const payment = await prisma.payment.findUnique({ where : { id } })

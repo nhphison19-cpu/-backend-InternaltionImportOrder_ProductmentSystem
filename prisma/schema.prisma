@@ -99,9 +99,52 @@ enum CustomsStatus {
   HOLD
   REJECTED
 }
-
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_UPDATED
+  ORDER_APPROVED
+  ORDER_REJECTED
+  SHIPMENT_UPDATED
+  PAYMENT_RECEIVED
+  PAYMENT_OVERDUE
+  CUSTOMS_CLEARED
+  INVENTORY_LOW
+  SYSTEM
+}
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
 // ------------------------- MASTER DATA -------------------------
 
+model Notification {
+  id          String   @id @default(cuid())
+
+  title       String
+  message     String
+
+  type        NotificationType
+  priority    NotificationPriority @default(MEDIUM)
+
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+
+  referenceId String?
+  referenceType String?
+  url         String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([employeeId])
+  @@index([isRead])
+  @@index([createdAt])
+
+  @@map("notifications")
+}
 model Supplier {
   id           String        @id @default(cuid())
   code         String        @unique
@@ -174,7 +217,7 @@ model Employee {
   createdOrders  ImportOrder[]  @relation("CreatedBy")
   approvedOrders ImportOrder[]  @relation("ApprovedBy")
   refreshTokens  RefreshToken[]
-
+  notifications Notification[] 
   @@map("employees")
 }
 

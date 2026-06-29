@@ -1,6 +1,15 @@
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
+const NotifcationService = require('./NotifcationService')
 const { getOrSetCache, deleteCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+const notifySafely = async (payload) => {
+    try {
+        await NotifcationService.createNotification(payload)
+    } catch (err) {
+        console.error('[ShipmentService] notify failed:', err.message)
+    }
+}
 
 const TTL = 300
 const detailKey = (id) => `shipment:${id}`
@@ -49,6 +58,22 @@ class ShipmentService {
         await deleteCache(detailKey(id))
         await deleteCache(byOrderKey(shipment.orderId))
         await deleteCacheByPattern('shipment:list:*')
+
+        if(data.status && data.status !== shipment.status) {
+            const order = await prisma.importOrder.findUnique({ where : { id : shipment.orderId } })
+            if(order) {
+                await notifySafely({
+                    employeeId: order.createdById,
+                    title: 'Cập nhật vận chuyển',
+                    message: `Lô hàng của đơn ${order.orderNumber} đã chuyển sang trạng thái ${data.status}`,
+                    type: 'SHIPMENT_UPDATED',
+                    priority: 'MEDIUM',
+                    referenceId: shipment.orderId,
+                    referenceType: 'IMPORT_ORDER',
+                    url: `/orders/${shipment.orderId}`,
+                })
+            }
+        }
         return updated
     }
     static async getDetail(id) {

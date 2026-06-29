@@ -1,39 +1,60 @@
-require('dotenv').config();
+// src/config/redisConfig.js
 const Redis = require('ioredis');
 
-const REDIS_URL = process.env.REDIS_URL;
-if (!REDIS_URL) {
-  throw new Error('REDIS_URL is not defined in environment variables');
-}
-console.log("REDIS_URL =", process.env.REDIS_URL);
-const retryStrategy = (times) => Math.min(times * 200, 2000);
+let redisConnection = null;
 
-const RedisClient = new Redis(REDIS_URL, {
-  maxRetriesPerRequest: 3,
-  enableReadyCheck: true,
-  lazyConnect: false,
-  retryStrategy,
-});
+/**
+ * Returns a shared ioredis connection for use with BullMQ.
+ * BullMQ requires ioredis; it does NOT work with the `redis` (node-redis) client.
+ *
+ * The connection is a lazy singleton — created once and reused by all queues/workers.
+ * BullMQ will clone this connection internally so you should NOT call .quit()
+ * on it directly; use the queue/worker .close() methods instead.
+ */
+const getRedisConnection = () => {
+  if (!redisConnection) {
+    redisConnection = new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: Number(process.env.REDIS_PORT) || 6379,
+      password: process.env.REDIS_PASSWORD || undefined,
+      db: Number(process.env.REDIS_DB) || 0,
 
-const RedisBullMQ = new Redis(REDIS_URL, {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-  retryStrategy,
-});
+      maxRetriesPerRequest: null,
 
-RedisClient.on('connect', () => console.log('[REDIS] cache connected'));
-RedisClient.on('error', (e) => console.error('[REDIS] cache error:', e.message));
+      retryStrategy: (times) => Math.min(times * 500, 30_000),
 
-RedisBullMQ.on('connect', () => console.log('[REDIS] BullMQ connected'));
-RedisBullMQ.on('error', (e) => console.error('[REDIS] BullMQ error:', e.message));
+      keepAlive: 10_000,
 
-const shutdown = async () => {
-  console.log('[REDIS] closing connections...');
-  await Promise.allSettled([RedisClient.quit(), RedisBullMQ.quit()]);
-  process.exit(0);
+      enableReadyCheck: false,
+    });
+
+    redisConnection.on('connect', () =>
+      console.log('[Redis] Connected to Redis')
+    );
+    redisConnection.on('ready', () =>
+      console.log('[Redis] Redis connection ready')
+    );
+    redisConnection.on('error', (err) =>
+      console.error('[Redis] Connection error:', err.message)
+    );
+    redisConnection.on('reconnecting', (delay) =>
+      console.warn(`[Redis] Reconnecting in ${delay} ms …`)
+    );
+    redisConnection.on('close', () =>
+      console.warn('[Redis] Connection closed')
+    );
+  }
+
+  return redisConnection;
 };
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
 
-module.exports = { RedisClient, RedisBullMQ };
+const closeRedisConnection = async () => {
+  if (redisConnection) {
+    await redisConnection.quit();
+    redisConnection = null;
+    console.log('[Redis] Connection closed gracefully');
+  }
+};
+
+module.exports = { getRedisConnection, closeRedisConnection };

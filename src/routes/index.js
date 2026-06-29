@@ -13,6 +13,8 @@ const paymentRoutes = require('./paymentRouter');
 const customsDeclarationRoutes = require('./customsDeclarationRouter');
 const importDocumentRoutes = require('./importDocumentRouter');
 const inventoryRoutes = require('./inventoryRouter');
+const notifcationRoutes = require('./notifcationRouter')
+
 
 router.use('/auth', authRoutes);
 router.use('/employees', employeeRoutes);
@@ -26,5 +28,6 @@ router.use('/payments', paymentRoutes);
 router.use('/customs-declarations', customsDeclarationRoutes);
 router.use('/import-documents', importDocumentRoutes);
 router.use('/inventory', inventoryRoutes);
+router.use('/notifcation' , notifcationRoutes)
 
 module.exports = router;

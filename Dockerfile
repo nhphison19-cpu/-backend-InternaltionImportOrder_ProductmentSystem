@@ -10,5 +10,4 @@ COPY . .
 
 EXPOSE 5000
 
-# Lệnh khởi chạy ứng dụng
 CMD ["node", "server.js"]

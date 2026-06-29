@@ -1,7 +1,35 @@
 
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
+const NotifcationService = require('./NotifcationService')
 const { getOrSetCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+const LOW_STOCK_THRESHOLD = 10
+
+const notifyLowStockSafely = async (tx, { warehouseId, productId, quantity }) => {
+    try {
+        if (quantity > LOW_STOCK_THRESHOLD) return
+        const [product, admins] = await Promise.all([
+            tx.product.findUnique({ where: { id: productId } }),
+            tx.employee.findMany({ where: { role: { in: ['ADMIN', 'MANAGER'] } }, select: { id: true } }),
+        ])
+        if (!admins.length) return
+        await NotifcationService.createNotificationForMany(
+            admins.map((a) => a.id),
+            {
+                title: 'Cảnh báo tồn kho thấp',
+                message: `Sản phẩm ${product?.name || productId} chỉ còn ${quantity} ${product?.unit || ''} trong kho`,
+                type: 'INVENTORY_LOW',
+                priority: 'HIGH',
+                referenceId: productId,
+                referenceType: 'PRODUCT',
+                url: `/inventory/${warehouseId}/${productId}`,
+            }
+        )
+    } catch (err) {
+        console.error('[InventoryService] low-stock notify failed:', err.message)
+    }
+}
 
 const TTL = 120
 const byWarehouseKey = (warehouseId) => `inventory:warehouse:${warehouseId}`
@@ -42,6 +70,7 @@ class InventoryService {
             data : { quantity : newQuantity }
         })
         await invalidateInventoryCache(warehouseId, productId)
+        await notifyLowStockSafely(tx, { warehouseId, productId, quantity: newQuantity })
         return updated
     }
     static async receiveOrder(orderId) {

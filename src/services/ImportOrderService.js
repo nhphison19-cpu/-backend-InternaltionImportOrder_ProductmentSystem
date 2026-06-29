@@ -1,7 +1,17 @@
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
 const InventoryService = require('./InventoryService')
+const NotifcationService = require('./NotifcationService')
 const { getOrSetCache, deleteCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+// Gửi notification không được phép làm fail nghiệp vụ chính (tạo/duyệt đơn...)
+const notifySafely = async (payload) => {
+    try {
+        await NotifcationService.createNotification(payload)
+    } catch (err) {
+        console.error('[ImportOrderService] notify failed:', err.message)
+    }
+}
 
 const TTL = 120
 const orderKey = (id) => `importOrder:${id}`
@@ -48,6 +58,15 @@ class ImportOrderService {
             return newOrder
         }).then(async (newOrder) => {
             await deleteCacheByPattern('importOrder:list:*')
+            await notifySafely({
+                employeeId: employeeId,
+                title: 'Đơn nhập hàng mới đã được tạo',
+                message: `Đơn hàng ${newOrder.orderNumber} đã được tạo và đang chờ duyệt`,
+                type: 'ORDER_CREATED',
+                referenceId: newOrder.id,
+                referenceType: 'IMPORT_ORDER',
+                url: `/orders/${newOrder.id}`,
+            })
             return newOrder
         })
     }
@@ -103,6 +122,20 @@ class ImportOrderService {
             })
         })
         await invalidateOrderCache(id)
+
+        if(newStatus === 'APPROVED' || newStatus === 'REJECTED') {
+            await notifySafely({
+                employeeId: updated.createdById,
+                title: newStatus === 'APPROVED' ? 'Đơn hàng đã được duyệt' : 'Đơn hàng đã bị từ chối',
+                message: `Đơn hàng ${updated.orderNumber} đã ${newStatus === 'APPROVED' ? 'được duyệt' : 'bị từ chối'}`,
+                type: newStatus === 'APPROVED' ? 'ORDER_APPROVED' : 'ORDER_REJECTED',
+                priority: 'HIGH',
+                referenceId: updated.id,
+                referenceType: 'IMPORT_ORDER',
+                url: `/orders/${updated.id}`,
+            })
+        }
+
         return updated
     }
     static async recalculateTotals(orderId) {
