@@ -1,9 +1,345 @@
-International Import Order Management SystemHệ thống quản lý đơn hàng nhập khẩu quốc tế là một giải pháp Backend toàn diện, được thiết kế để tối ưu hóa quy trình quản lý hàng hóa, vận chuyển và tài chính cho doanh nghiệp xuất nhập khẩu. Hệ thống tập trung vào tính bảo mật cao, hiệu năng ổn định và khả năng mở rộng.🚀 Các tính năng chínhAuthentication & Authorization: Xác thực JWT bảo mật, phân quyền dựa trên vai trò (RBAC) chặt chẽ (Admin, Manager, Employee).Data Security: Tích hợp Helmet để bảo mật HTTP headers, bảo vệ thông tin người dùng bằng bcrypt và lọc dữ liệu nhạy cảm trước khi phản hồi (Safe response).High Performance: Tối ưu hóa truy vấn dữ liệu với Redis Caching, xử lý các tác vụ nền (background jobs) như gửi thông báo hoặc xử lý đơn hàng với BullMQ.API Documentation: Tài liệu Swagger (OpenAPI) được cấu hình tự động, giúp cộng tác viên dễ dàng nắm bắt cấu trúc API.Monitoring & Logging: Hệ thống logging chi tiết với Morgan, hỗ trợ chẩn đoán lỗi nhanh chóng; tích hợp endpoint /health để giám sát trạng thái hệ thống.Quality Assurance: Bộ test suite toàn diện sử dụng Jest và Supertest, đạt độ phủ code cao cho các service cốt lõi.🛠 Công nghệ sử dụngThành phầnCông nghệRuntimeNode.js (JavaScript)FrameworkExpress.jsDatabasePostgreSQLORMPrismaCache/QueueRedisSecurityJWT, Bcrypt, Helmet, CORSTestingJest, SupertestInfrastructureDocker, Docker Compose, GitHub Actions⚙️ Hướng dẫn cài đặt1. Yêu cầu hệ thốngNode.js v18 hoặc cao hơn.Docker Desktop (khuyên dùng để chạy DB và Redis nhanh nhất).2. Các bước cài đặtClone dự án:Bashgit clone https://github.com/nhphison19-cpu/-backend-InternaltionImportOrder_ProductmentSystem.git
+<div align="center">
+
+# 🌍 International Import Order & Procurement System
+
+### Backend API for International Import Order & Procurement Management
+
+<img src="https://img.shields.io/badge/Node.js-Express-green?style=for-the-badge"/>
+<img src="https://img.shields.io/badge/Database-PostgreSQL-blue?style=for-the-badge"/>
+<img src="https://img.shields.io/badge/ORM-Prisma-2D3748?style=for-the-badge"/>
+<img src="https://img.shields.io/badge/Auth-JWT-orange?style=for-the-badge"/>
+<img src="https://img.shields.io/badge/License-MIT-red?style=for-the-badge"/>
+
+</div>
+
+---
+
+# 📖 Overview
+
+The **International Import Order & Procurement System** is a backend RESTful API designed to support businesses in managing international purchasing, import orders, suppliers, warehouses, products, and inventory.
+
+The system follows a layered architecture to ensure scalability, maintainability, and clean code practices.
+
+---
+
+# ✨ Features
+
+## Authentication
+
+- Register
+- Login
+- JWT Authentication
+- Role Authorization
+- Refresh Token
+
+---
+
+## User Management
+
+- User CRUD
+- Role Management
+- Profile Management
+
+---
+
+## Supplier Management
+
+- Create Supplier
+- Update Supplier
+- Delete Supplier
+- Supplier Information
+
+---
+
+## Product Management
+
+- Product CRUD
+- Product Categories
+- Product Images
+- Product Status
+
+---
+
+## Procurement
+
+- Purchase Orders
+- Procurement Requests
+- Order Tracking
+- Approval Workflow
+
+---
+
+## Import Orders
+
+- Create Import Order
+- Update Import Status
+- Manage Shipment
+- Import History
+
+---
+
+## Warehouse
+
+- Warehouse CRUD
+- Inventory Management
+- Stock Movement
+- Stock History
+
+---
+
+## Dashboard
+
+- Revenue Statistics
+- Inventory Statistics
+- Purchase Statistics
+- Import Reports
+
+---
+
+# 🏗 System Architecture
+
+```
+Client
+   │
+   ▼
+Express API
+   │
+Controller Layer
+   │
+Service Layer
+   │
+Repository / Prisma ORM
+   │
+PostgreSQL Database
+```
+
+---
+
+# 🛠 Tech Stack
+
+| Technology | Description |
+|------------|-------------|
+| Node.js | Runtime |
+| Express.js | REST API Framework |
+| PostgreSQL | Database |
+| Prisma ORM | Database ORM |
+| JWT | Authentication |
+| Bcrypt | Password Hashing |
+| Multer | File Upload |
+| Cloudinary | Image Storage |
+| Nodemailer | Email Service |
+| Swagger | API Documentation |
+
+---
+
+# 📂 Project Structure
+
+```
+src
+│
+├── config
+├── controllers
+├── middlewares
+├── prisma
+├── routes
+├── services
+├── utils
+├── validations
+├── constants
+└── server.js
+```
+
+---
+
+# ⚙ Installation
+
+## Clone Repository
+
+```bash
+git clone https://github.com/nhphison19-cpu/-backend-InternaltionImportOrder_ProductmentSystem.git
+```
+
+Move to project
+
+```bash
 cd -backend-InternaltionImportOrder_ProductmentSystem
-Cài đặt dependencies:Bashnpm install
-Cấu hình môi trường:Sao chép file mẫu và cấu hình:Bashcp .env.example .env
-Mở file .env và điền các giá trị thực tế (Database URL, Secrets).Khởi chạy hệ thống:Sử dụng Docker (Khuyên dùng):Bashdocker-compose up --build
-Hoặc chạy trực tiếp (Yêu cầu đã có Postgres/Redis local):Bashnpm run dev
-🐳 Triển khai với DockerHệ thống được đóng gói hoàn chỉnh bằng Dockerfile. Sử dụng lệnh sau để khởi chạy toàn bộ môi trường (Database + Redis + App):Bashdocker-compose up -d --build
-🧪 Kiểm thử (Testing)Để đảm bảo tính ổn định của hệ thống trước khi deploy, hãy chạy bộ kiểm thử tự động:Bashnpm test
-🔄 CI/CD PipelineDự án được tích hợp sẵn GitHub Actions (file .github/workflows/ci-cd.yml). Quy trình tự động bao gồm:CI: Cài đặt dependencies và chạy toàn bộ bài test suite trên môi trường Linux ảo.CD: Nếu test thành công, hệ thống tự động build Docker Image và đẩy lên Docker Hub.
+```
+
+Install packages
+
+```bash
+npm install
+```
+
+Create environment file
+
+```env
+PORT=5000
+
+DATABASE_URL=
+
+JWT_ACCESS_SECRET=
+
+JWT_REFRESH_SECRET=
+
+CLOUDINARY_CLOUD_NAME=
+
+CLOUDINARY_API_KEY=
+
+CLOUDINARY_API_SECRET=
+
+EMAIL_USER=
+
+EMAIL_PASS=
+```
+
+Generate Prisma
+
+```bash
+npx prisma generate
+```
+
+Run Migration
+
+```bash
+npx prisma migrate dev
+```
+
+Run project
+
+```bash
+npm run dev
+```
+
+---
+
+# 🔑 Environment Variables
+
+| Variable | Description |
+|-----------|-------------|
+| PORT | Server Port |
+| DATABASE_URL | PostgreSQL Connection |
+| JWT_ACCESS_SECRET | JWT Secret |
+| JWT_REFRESH_SECRET | Refresh Secret |
+| CLOUDINARY_* | Cloudinary Config |
+| EMAIL_USER | SMTP Email |
+| EMAIL_PASS | SMTP Password |
+
+---
+
+# 📚 API Modules
+
+```
+Auth
+├── Login
+├── Register
+└── Refresh Token
+
+Users
+├── CRUD
+└── Profile
+
+Products
+├── CRUD
+├── Upload Image
+└── Category
+
+Suppliers
+├── CRUD
+└── Search
+
+Orders
+├── Procurement
+├── Import Orders
+└── Tracking
+
+Warehouse
+├── Inventory
+├── Stock
+└── History
+```
+
+---
+
+# 🔐 Security
+
+- JWT Authentication
+- Password Hashing (bcrypt)
+- Protected Routes
+- Role-based Authorization
+- Input Validation
+- Error Handling
+
+---
+
+# 🚀 Future Improvements
+
+- Docker Deployment
+- Redis Cache
+- RabbitMQ
+- Notification Service
+- Microservices
+- Unit Testing
+- CI/CD
+- Audit Log
+- Multi-language
+- File Management
+
+---
+
+# 📷 API Documentation
+
+Swagger
+
+```
+http://localhost:5000/api-docs
+```
+
+---
+
+# 📈 Database
+
+Example entities
+
+```
+User
+Role
+Supplier
+Product
+Category
+Warehouse
+Inventory
+PurchaseOrder
+ImportOrder
+Shipment
+Address
+Notification
+```
+
+---
+
+# 👨‍💻 Author
+
+**Phi Son**
+
+GitHub
+
+https://github.com/nhphison19-cpu
+
+---
+
+# ⭐ Support
+
+If you like this project, please consider giving it a ⭐ on GitHub.
+
+---
+
+# 📄 License
+
+MIT License
+
+```
+Copyright (c) 2026
+
+Permission is hereby granted...
+```
