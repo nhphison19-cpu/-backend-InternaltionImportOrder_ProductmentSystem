@@ -1,5 +1,10 @@
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
+const { getOrSetCache, deleteCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+const TTL = 300
+const detailKey = (id) => `payment:${id}`
+const byOrderKey = (orderId) => `payment:order:${orderId}`
 
 class PaymentService {
     static async createPayment(orderId , data) {
@@ -19,6 +24,10 @@ class PaymentService {
             })
             await syncOrderPaymentStatus(tx , orderId)
             return payment
+        }).then(async (payment) => {
+            await deleteCache(byOrderKey(orderId))
+            await deleteCacheByPattern('payment:list:*')
+            return payment
         })
     }
     static async markPaid(id , paidAt) {
@@ -33,6 +42,11 @@ class PaymentService {
             })
             await syncOrderPaymentStatus(tx , payment.orderId)
             return updated
+        }).then(async (updated) => {
+            await deleteCache(detailKey(id))
+            await deleteCache(byOrderKey(updated.orderId))
+            await deleteCacheByPattern('payment:list:*')
+            return updated
         })
     }
     static async updatePayment(id , data) {
@@ -40,7 +54,7 @@ class PaymentService {
         if(!payment) {
             throw new AppError('Payment is not found' , 404)
         }
-        return await prisma.$transaction(async (tx) => {
+        const updated = await prisma.$transaction(async (tx) => {
             const updated = await tx.payment.update({
                 where : { id } ,
                 data : {
@@ -53,39 +67,49 @@ class PaymentService {
             await syncOrderPaymentStatus(tx , payment.orderId)
             return updated
         })
+        await deleteCache(detailKey(id))
+        await deleteCache(byOrderKey(payment.orderId))
+        await deleteCacheByPattern('payment:list:*')
+        return updated
     }
     static async getDetail(id) {
-        const payment = await prisma.payment.findUnique({
-            where : { id } ,
-            include : { order : true }
-        })
-        if(!payment) {
-            throw new AppError('Payment is not found' , 404)
-        }
-        return payment
+        return getOrSetCache(detailKey(id), async () => {
+            const payment = await prisma.payment.findUnique({
+                where : { id } ,
+                include : { order : true }
+            })
+            if(!payment) {
+                throw new AppError('Payment is not found' , 404)
+            }
+            return payment
+        }, TTL)
     }
     static async getByOrder(orderId) {
-        return await prisma.payment.findMany({
-            where : { orderId } ,
-            orderBy : { createdAt : 'desc' }
-        })
+        return getOrSetCache(byOrderKey(orderId), async () => {
+            return await prisma.payment.findMany({
+                where : { orderId } ,
+                orderBy : { createdAt : 'desc' }
+            })
+        }, TTL)
     }
     static async getAll({page = 1 , limit = 10 , status}) {
         const p = parseInt(page)
         const l = parseInt(limit)
-        const skip = (p-1)*l
-        const where = { ...(status ? { status } : {}) }
-        const [data , total] = await Promise.all([
-            prisma.payment.findMany({
-                where ,
-                skip ,
-                take : l ,
-                orderBy : { createdAt : 'desc' } ,
-                include : { order : true }
-            }) ,
-            prisma.payment.count({ where })
-        ])
-        return { data , total , page : p , limit : l }
+        return getOrSetCache(`payment:list:${p}:${l}:${status || ''}`, async () => {
+            const skip = (p-1)*l
+            const where = { ...(status ? { status } : {}) }
+            const [data , total] = await Promise.all([
+                prisma.payment.findMany({
+                    where ,
+                    skip ,
+                    take : l ,
+                    orderBy : { createdAt : 'desc' } ,
+                    include : { order : true }
+                }) ,
+                prisma.payment.count({ where })
+            ])
+            return { data , total , page : p , limit : l }
+        }, TTL)
     }
 }
 

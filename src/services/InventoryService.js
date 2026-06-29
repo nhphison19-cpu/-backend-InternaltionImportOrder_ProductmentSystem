@@ -1,6 +1,19 @@
 
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
+const { getOrSetCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+const TTL = 120
+const byWarehouseKey = (warehouseId) => `inventory:warehouse:${warehouseId}`
+const byProductKey = (productId) => `inventory:product:${productId}`
+const oneKey = (warehouseId, productId) => `inventory:${warehouseId}:${productId}`
+
+const invalidateInventoryCache = async (warehouseId, productId) => {
+    await deleteCacheByPattern(`inventory:warehouse:${warehouseId}`)
+    await deleteCacheByPattern(`inventory:product:${productId}`)
+    await deleteCacheByPattern(`inventory:${warehouseId}:${productId}`)
+    await deleteCacheByPattern('inventory:list:*')
+}
 
 class InventoryService {
     static async adjustStock(tx , { warehouseId , productId , quantityDelta }) {
@@ -12,9 +25,11 @@ class InventoryService {
             if(quantityDelta < 0) {
                 throw new AppError('Không đủ tồn kho để trừ' , 400)
             }
-            return await tx.inventory.create({
+            const created = await tx.inventory.create({
                 data : { warehouseId , productId , quantity : quantityDelta }
             })
+            await invalidateInventoryCache(warehouseId, productId)
+            return created
         }
 
         const newQuantity = existing.quantity + quantityDelta
@@ -22,10 +37,12 @@ class InventoryService {
             throw new AppError('Không đủ tồn kho để trừ' , 400)
         }
 
-        return await tx.inventory.update({
+        const updated = await tx.inventory.update({
             where : { warehouseId_productId : { warehouseId , productId } } ,
             data : { quantity : newQuantity }
         })
+        await invalidateInventoryCache(warehouseId, productId)
+        return updated
     }
     static async receiveOrder(orderId) {
         return await prisma.$transaction(async (tx) => {
@@ -56,48 +73,56 @@ class InventoryService {
         })
     }
     static async getByWarehouse(warehouseId) {
-        return await prisma.inventory.findMany({
-            where : { warehouseId } ,
-            include : { product : true } ,
-            orderBy : { updatedAt : 'desc' }
-        })
+        return getOrSetCache(byWarehouseKey(warehouseId), async () => {
+            return await prisma.inventory.findMany({
+                where : { warehouseId } ,
+                include : { product : true } ,
+                orderBy : { updatedAt : 'desc' }
+            })
+        }, TTL)
     }
     static async getByProduct(productId) {
-        return await prisma.inventory.findMany({
-            where : { productId } ,
-            include : { warehouse : true } ,
-            orderBy : { updatedAt : 'desc' }
-        })
+        return getOrSetCache(byProductKey(productId), async () => {
+            return await prisma.inventory.findMany({
+                where : { productId } ,
+                include : { warehouse : true } ,
+                orderBy : { updatedAt : 'desc' }
+            })
+        }, TTL)
     }
     static async getOne(warehouseId , productId) {
-        const inventory = await prisma.inventory.findUnique({
-            where : { warehouseId_productId : { warehouseId , productId } } ,
-            include : { warehouse : true , product : true }
-        })
-        if(!inventory) {
-            throw new AppError('Inventory record is not found' , 404)
-        }
-        return inventory
+        return getOrSetCache(oneKey(warehouseId, productId), async () => {
+            const inventory = await prisma.inventory.findUnique({
+                where : { warehouseId_productId : { warehouseId , productId } } ,
+                include : { warehouse : true , product : true }
+            })
+            if(!inventory) {
+                throw new AppError('Inventory record is not found' , 404)
+            }
+            return inventory
+        }, TTL)
     }
     static async getAll({page = 1 , limit = 10 , warehouseId , productId}) {
         const p = parseInt(page)
         const l = parseInt(limit)
-        const skip = (p-1)*l
-        const where = {
-            ...(warehouseId ? { warehouseId } : {}) ,
-            ...(productId ? { productId } : {})
-        }
-        const [data , total] = await Promise.all([
-            prisma.inventory.findMany({
-                where ,
-                skip ,
-                take : l ,
-                orderBy : { updatedAt : 'desc' } ,
-                include : { warehouse : true , product : true }
-            }) ,
-            prisma.inventory.count({ where })
-        ])
-        return { data , total , page : p , limit : l }
+        return getOrSetCache(`inventory:list:${p}:${l}:${warehouseId || ''}:${productId || ''}`, async () => {
+            const skip = (p-1)*l
+            const where = {
+                ...(warehouseId ? { warehouseId } : {}) ,
+                ...(productId ? { productId } : {})
+            }
+            const [data , total] = await Promise.all([
+                prisma.inventory.findMany({
+                    where ,
+                    skip ,
+                    take : l ,
+                    orderBy : { updatedAt : 'desc' } ,
+                    include : { warehouse : true , product : true }
+                }) ,
+                prisma.inventory.count({ where })
+            ])
+            return { data , total , page : p , limit : l }
+        }, TTL)
     }
 }
 

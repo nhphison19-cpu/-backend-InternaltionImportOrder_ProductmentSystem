@@ -1,6 +1,15 @@
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
 const InventoryService = require('./InventoryService')
+const { getOrSetCache, deleteCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+const TTL = 120
+const orderKey = (id) => `importOrder:${id}`
+
+const invalidateOrderCache = async (id) => {
+    await deleteCache(orderKey(id))
+    await deleteCacheByPattern('importOrder:list:*')
+}
 
 class ImportOrderService {
     static async createIO(data , employeeId) {
@@ -37,6 +46,9 @@ class ImportOrderService {
                 include: { items: true }
             });
             return newOrder
+        }).then(async (newOrder) => {
+            await deleteCacheByPattern('importOrder:list:*')
+            return newOrder
         })
     }
     static async updateIO(id , data) {
@@ -47,7 +59,7 @@ class ImportOrderService {
         if(order.status !== 'DRAFT') {
             throw new AppError('Chỉ có thể sửa đơn hàng ở trạng thái DRAFT' , 400)
         }
-        return await prisma.importOrder.update({
+        const updated = await prisma.importOrder.update({
             where : { id } ,
             data : {
                 supplierId: data.supplierId,
@@ -62,13 +74,17 @@ class ImportOrderService {
                 notes: data.notes,
             }
         })
+        await invalidateOrderCache(id)
+        return updated
     }
     static async updateStatus(id , newStatus , employeeId) {
         if(newStatus === 'DELIVERED') {
-            return await InventoryService.receiveOrder(id)
+            const result = await InventoryService.receiveOrder(id)
+            await invalidateOrderCache(id)
+            return result
         }
 
-        return await prisma.$transaction( async(tx) => {
+        const updated = await prisma.$transaction( async(tx) => {
             const order  = await tx.importOrder.findUnique({
                 where :{ id : id }
             })
@@ -86,6 +102,8 @@ class ImportOrderService {
                 data
             })
         })
+        await invalidateOrderCache(id)
+        return updated
     }
     static async recalculateTotals(orderId) {
         const order = await prisma.importOrder.findUnique({
@@ -99,57 +117,66 @@ class ImportOrderService {
         const subTotal = order.items.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
         const totalAmount = subTotal + (order.taxAmount || 0) + (order.shippingCost || 0) + (order.insuranceCost || 0);
 
-        return await prisma.importOrder.update({
+        const updated = await prisma.importOrder.update({
             where: { id: orderId },
             data: { subTotal, totalAmount }
         });
+        await invalidateOrderCache(orderId)
+        return updated;
     }
     static async getAll({page = 1 , limit = 10 , search = '' , status , supplierId}) {
         const p = parseInt(page)
         const l = parseInt(limit)
-        const skip = (p-1)*l
-        const where = {
-            ...(status ? { status } : {}) ,
-            ...(supplierId ? { supplierId } : {}) ,
-            ...(search ? {
-                OR: [
-                    { orderNumber: { contains: search, mode: 'insensitive' } },
-                    { supplier: { name: { contains: search, mode: 'insensitive' } } }
-                ]
-            }: {})
-        }
-        const [data  , total] = await Promise.all([
-            prisma.importOrder.findMany({
-                where ,
-                skip ,
-                take : l ,
-                orderBy : { createdAt : 'desc'} ,
-                include : { supplier : true , warehouse : true , items : true }
-            }) ,
-            prisma.importOrder.count({where})
-        ])
-        return {data , total , page : p , limit : l}
+        return getOrSetCache(`importOrder:list:${p}:${l}:${search}:${status || ''}:${supplierId || ''}`, async () => {
+            const skip = (p-1)*l
+            const where = {
+                ...(status ? { status } : {}) ,
+                ...(supplierId ? { supplierId } : {}) ,
+                ...(search ? {
+                    OR: [
+                        { orderNumber: { contains: search, mode: 'insensitive' } },
+                        { supplier: { name: { contains: search, mode: 'insensitive' } } }
+                    ]
+                }: {})
+            }
+            const [data  , total] = await Promise.all([
+                prisma.importOrder.findMany({
+                    where ,
+                    skip ,
+                    take : l ,
+                    orderBy : { createdAt : 'desc'} ,
+                    include : { supplier : true , warehouse : true , items : true }
+                }) ,
+                prisma.importOrder.count({where})
+            ])
+            return {data , total , page : p , limit : l}
+        }, TTL)
     }
     static async getById(id) {
-        const order = await prisma.importOrder.findUnique({
-            where : {id  : id} ,
-            include  : {
-                supplier : true ,
-                warehouse : true ,
-                items : { include : { product : true } } ,
-                createdBy : true ,
-                approvedBy : true ,
-                shipments : true ,
-                payments : true ,
-                documents : true ,
-                customsDeclarations : true
+        return getOrSetCache(orderKey(id), async () => {
+            const order = await prisma.importOrder.findUnique({
+                where : {id  : id} ,
+                include  : {
+                    supplier : true ,
+                    warehouse : true ,
+                    items : { include : { product : true } } ,
+                    createdBy : true ,
+                    approvedBy : true ,
+                    shipments : true ,
+                    payments : true ,
+                    documents : true ,
+                    customsDeclarations : true
+                }
+            })
+            if(!order) {
+                throw new AppError('Import order is not found' , 404)
             }
-        })
-        if(!order) {
-            throw new AppError('Import order is not found' , 404)
-        }
-        return order
+            return order
+        }, TTL)
     }
 }
 
 module.exports = ImportOrderService
+
+
+module.exports.invalidateOrderCache = invalidateOrderCache

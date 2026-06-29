@@ -1,5 +1,9 @@
 const prisma = require('../config/prisma');
 const { AppError } = require('../middlewares/errorHandler');
+const { getOrSetCache, deleteCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+const TTL = 300
+const supplierKey = (id) => `supplier:${id}`
 
 const PUBLIC_FIELDS = {
     code : true , 
@@ -48,6 +52,7 @@ class SupplierService {
                 rating       : data.rating,
             }
         })
+        await deleteCacheByPattern('supplier:list:*')
         return supplierNew
     }
     static async updateSupplier(id , data) {
@@ -59,7 +64,7 @@ class SupplierService {
         if(supplier === null){
             throw new AppError('Supplier is not found ' , 401)
         }
-        return await prisma.supplier.update({
+        const updated = await prisma.supplier.update({
             where : {
                 id 
             } ,
@@ -78,39 +83,46 @@ class SupplierService {
                 rating       : data.rating,
             }
         })
+        await deleteCache(supplierKey(id))
+        await deleteCacheByPattern('supplier:list:*')
+        return updated
     }
     static async getDetails(id) {
-        const supplier = await prisma.supplier.findUnique({
-            where : {id : id }
-        })
-        if(supplier == null){
-            throw new AppError('Supplier is not found ' , 404)
-        }
-        return supplier
+        return getOrSetCache(supplierKey(id), async () => {
+            const supplier = await prisma.supplier.findUnique({
+                where : {id : id }
+            })
+            if(supplier == null){
+                throw new AppError('Supplier is not found ' , 404)
+            }
+            return supplier
+        }, TTL)
     }
     static async getAll({page = 1 , limit = 10 , search = ''}){
         const p = parseInt(page)
         const l = parseInt(limit)
-        const skip = (p-1)*l
-        const where = {
-             deleteAt :  null ,
-                ...(search ? {
-            OR : [
-                { name : { contains : search , mode : 'insensitive'} } , 
-                { code : {contains : search , mode : 'insensitive'}}
-            ]
-            }: {})
-        } 
-        const [data  , total] = await Promise.all([
-            prisma.supplier.findMany({
-                where , 
-                skip ,
-                take : l ,
-                orderBy : { createdAt : 'desc'}
-            }) , 
-            prisma.supplier.count({where})
-        ])
-        return {data , total , page : p , limit : l}
+        return getOrSetCache(`supplier:list:${p}:${l}:${search}`, async () => {
+            const skip = (p-1)*l
+            const where = {
+                 deleteAt :  null ,
+                    ...(search ? {
+                OR : [
+                    { name : { contains : search , mode : 'insensitive'} } , 
+                    { code : {contains : search , mode : 'insensitive'}}
+                ]
+                }: {})
+            } 
+            const [data  , total] = await Promise.all([
+                prisma.supplier.findMany({
+                    where , 
+                    skip ,
+                    take : l ,
+                    orderBy : { createdAt : 'desc'}
+                }) , 
+                prisma.supplier.count({where})
+            ])
+            return {data , total , page : p , limit : l}
+        }, TTL)
     }
     static async deleteSupplier(id) {
         const supplier = await prisma.supplier.findUnique({
@@ -119,7 +131,7 @@ class SupplierService {
         if(supplier == null) {
             throw new AppError('Supplier is not found' , 401)
         }
-        return  await prisma.supplier.update({
+        const updated = await prisma.supplier.update({
             where : {
                 id : id
             } ,
@@ -127,6 +139,9 @@ class SupplierService {
                 deleteAt : new Date()
             }
         })
+        await deleteCache(supplierKey(id))
+        await deleteCacheByPattern('supplier:list:*')
+        return updated
     }
     static async restore(id) {
          const supplier = await prisma.supplier.findUnique({
@@ -135,10 +150,13 @@ class SupplierService {
         if(supplier == null ){
             throw new AppError('supplier is not found' , 404)
         }
-        return await prisma.supplier.update({
+        const updated = await prisma.supplier.update({
             where: { id },
             data: { isActive : true }
         });
+        await deleteCache(supplierKey(id))
+        await deleteCacheByPattern('supplier:list:*')
+        return updated;
     }
     static async deleteSoft(id) {
         const supplier = await prisma.supplier.findUnique({
@@ -147,10 +165,13 @@ class SupplierService {
         if(supplier == null ){
             throw new AppError('supplier is not found' , 404)
         }
-        return await prisma.supplier.update({
+        const updated = await prisma.supplier.update({
             where: { id },
             data: { isActive : false }
         });
+        await deleteCache(supplierKey(id))
+        await deleteCacheByPattern('supplier:list:*')
+        return updated;
     }
 }
 

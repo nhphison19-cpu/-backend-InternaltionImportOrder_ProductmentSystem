@@ -5,7 +5,7 @@ const REDIS_URL = process.env.REDIS_URL;
 if (!REDIS_URL) {
   throw new Error('REDIS_URL is not defined in environment variables');
 }
-
+console.log("REDIS_URL =", process.env.REDIS_URL);
 const retryStrategy = (times) => Math.min(times * 200, 2000);
 
 const RedisClient = new Redis(REDIS_URL, {

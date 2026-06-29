@@ -1,5 +1,9 @@
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
+const { getOrSetCache, deleteCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+
+const WAREHOUSE_TTL = 300
+const warehouseKey = (id) => `warehouse:${id}`
 const PUBLIC_FIELDS = {
     code : true ,
     name :true ,
@@ -31,6 +35,7 @@ class WarehouseService {
                 country  : data.country,
              }
         })
+        await deleteCacheByPattern('warehouse:list:*')
         return warehouse
     } 
     static async updateWarehouse(id , data) {
@@ -56,7 +61,7 @@ class WarehouseService {
                 throw new AppError('Warehouse name or code already taken by another record', 400);
             }
         }
-        return await prisma.warehouse.update({
+        const updated = await prisma.warehouse.update({
             where : {
                 id : id
             } ,
@@ -67,24 +72,31 @@ class WarehouseService {
                 country  : data.country,
             }
         })
+        await deleteCache(warehouseKey(id))
+        await deleteCacheByPattern('warehouse:list:*')
+        return updated
     }
     static async getDetails(id) {
-    const warehouse = await prisma.warehouse.findUnique({ where: { id } });
-    if (!warehouse) throw new AppError('Warehouse not found', 404);
-    return warehouse;
+    return getOrSetCache(warehouseKey(id), async () => {
+        const warehouse = await prisma.warehouse.findUnique({ where: { id } });
+        if (!warehouse) throw new AppError('Warehouse not found', 404);
+        return warehouse;
+    }, WAREHOUSE_TTL)
     }   
     static async getAll({ page, limit, search }) {
-    const skip = (page - 1) * limit;
-    const where = search ? {
-        OR: [{ name: { contains: search, mode: 'insensitive' } }, { code: { contains: search, mode: 'insensitive' } }]
-    } : {};
+    return getOrSetCache(`warehouse:list:${page}:${limit}:${search || ''}`, async () => {
+        const skip = (page - 1) * limit;
+        const where = search ? {
+            OR: [{ name: { contains: search, mode: 'insensitive' } }, { code: { contains: search, mode: 'insensitive' } }]
+        } : {};
 
-    const [data, total] = await Promise.all([
-        prisma.warehouse.findMany({ where, skip, take: parseInt(limit) }),
-        prisma.warehouse.count({ where })
-    ]);
+        const [data, total] = await Promise.all([
+            prisma.warehouse.findMany({ where, skip, take: parseInt(limit) }),
+            prisma.warehouse.count({ where })
+        ]);
 
-    return { data, page, limit, total };
+        return { data, page, limit, total };
+    }, WAREHOUSE_TTL)
     }
     static async softDelete(id) {
         const warehouse = await prisma.warehouse.findUnique({
@@ -93,19 +105,25 @@ class WarehouseService {
         if(warehouse == null ){
             throw new AppError('Warehouse is not found' , 404)
         }
-        return await prisma.warehouse.update({
+        const updated = await prisma.warehouse.update({
             where: { id },
             data: { isActive: false }
         });
+        await deleteCache(warehouseKey(id))
+        await deleteCacheByPattern('warehouse:list:*')
+        return updated;
     }
     static async restore(id) {
         const warehouse = await prisma.warehouse.findUnique({ where: { id } });
         if (!warehouse) throw new AppError('Warehouse not found', 404);
 
-        return await prisma.warehouse.update({
+        const updated = await prisma.warehouse.update({
             where: { id },
             data: { isActive: true }
         });
+        await deleteCache(warehouseKey(id))
+        await deleteCacheByPattern('warehouse:list:*')
+        return updated;
     }
     static async deleteWare (id) {
         const warehouse = await prisma.warehouse.findUnique({ where: { id } });
@@ -119,9 +137,12 @@ class WarehouseService {
         if(hasOrders) {
             throw new AppError('Cannot delete  : this warehouse has associated orders')
         }
-        return await prisma.warehouse.delete({
+        const deleted = await prisma.warehouse.delete({
             where : {id : id}
         })
+        await deleteCache(warehouseKey(id))
+        await deleteCacheByPattern('warehouse:list:*')
+        return deleted
     }
 }
 module.exports = WarehouseService

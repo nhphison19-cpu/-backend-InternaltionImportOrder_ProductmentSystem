@@ -1,0 +1,120 @@
+openapi: 3.0.0
+info:
+  title: International Import System API
+  version: 1.0.0
+  description: Tài liệu tổng hợp toàn bộ các module trong hệ thống.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+# Nhóm các API theo từng module
+paths:
+  /api/auth/login:
+    post:
+      summary: Đăng nhập hệ thống
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, example: "admin@company.com" }
+                password: { type: string, example: "123456" }
+      responses:
+        200: 
+          description: Đăng nhập thành công, trả về JWT
+        401:
+          description: Sai email hoặc mật khẩu
+
+  /api/auth/register:
+    post:
+      summary: Đăng ký tài khoản (Admin only)
+      tags: [Auth]
+      security: [{ bearerAuth: [] }] # Yêu cầu có quyền mới được gọi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string }
+                password: { type: string }
+                role: { type: string, enum: [EMPLOYEE, ADMIN, MANAGER] }
+      responses:
+        201: { description: Đăng ký thành công }
+  # --- IMPORT ORDER ---
+  /api/import-orders:
+    get:
+      summary: Lấy danh sách đơn hàng
+      tags: [ImportOrder]
+      security: [{ bearerAuth: [] }]
+    post:
+      summary: Tạo đơn hàng mới
+      tags: [ImportOrder]
+      security: [{ bearerAuth: [] }]
+
+  # --- INVENTORY ---
+  /api/inventory:
+    get:
+      summary: Danh sách tồn kho
+      tags: [Inventory]
+    patch:
+      summary: Điều chỉnh số lượng kho
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+
+  # --- PRODUCT ---
+  /api/products:
+    get:
+      summary: Lấy danh sách sản phẩm
+      tags: [Product]
+    post:
+      summary: Thêm sản phẩm mới
+      tags: [Product]
+      security: [{ bearerAuth: [] }]
+
+  # --- SUPPLIER ---
+  /api/suppliers:
+    get:
+      summary: Danh sách nhà cung cấp
+      tags: [Supplier]
+
+  # --- EMPLOYEE ---
+  /api/employees:
+    get:
+      summary: Danh sách nhân viên
+      tags: [Employee]
+      security: [{ bearerAuth: [] }]
+
+  # --- SHIPMENT ---
+  /api/shipments:
+    get:
+      summary: Lấy danh sách vận đơn
+      tags: [Shipment]
+      security: [{ bearerAuth: [] }]
+
+  # --- PAYMENT ---
+  /api/payments:
+    post:
+      summary: Ghi nhận thanh toán
+      tags: [Payment]
+      security: [{ bearerAuth: [] }]
+
+# Khai báo các nhãn để Swagger chia menu ở sidebar
+tags:
+  - name: Auth
+  - name: ImportOrder
+  - name: Inventory
+  - name: Product
+  - name: Supplier
+  - name: Employee
+  - name: Shipment
+  - name: Payment

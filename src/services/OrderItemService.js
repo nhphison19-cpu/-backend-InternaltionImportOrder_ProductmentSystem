@@ -1,5 +1,10 @@
 const prisma = require('../config/prisma')
 const { AppError } = require('../middlewares/errorHandler')
+const { getOrSetCache, deleteCache, deleteCacheByPattern } = require('../utils/helpers/cacheHelper')
+const { invalidateOrderCache } = require('./ImportOrderService')
+
+const TTL = 120
+const byOrderKey = (orderId) => `orderItem:order:${orderId}`
 
 class OrderItemService {
     static async addItem(orderId , data) {
@@ -26,6 +31,10 @@ class OrderItemService {
             })
 
             await recalc(tx , orderId)
+            return item
+        }).then(async (item) => {
+            await deleteCache(byOrderKey(orderId))
+            await invalidateOrderCache(orderId)
             return item
         })
     }
@@ -56,6 +65,10 @@ class OrderItemService {
 
             await recalc(tx , item.orderId)
             return updated
+        }).then(async (updated) => {
+            await deleteCache(byOrderKey(updated.orderId))
+            await invalidateOrderCache(updated.orderId)
+            return updated
         })
     }
     static async removeItem(id) {
@@ -70,15 +83,21 @@ class OrderItemService {
 
             await tx.orderItem.delete({ where : { id } })
             await recalc(tx , item.orderId)
-            return { id }
+            return { id, orderId: item.orderId }
+        }).then(async (result) => {
+            await deleteCache(byOrderKey(result.orderId))
+            await invalidateOrderCache(result.orderId)
+            return { id: result.id }
         })
     }
     static async getByOrder(orderId) {
-        return await prisma.orderItem.findMany({
-            where : { orderId } ,
-            include : { product : true } ,
-            orderBy : { id : 'asc' }
-        })
+        return getOrSetCache(byOrderKey(orderId), async () => {
+            return await prisma.orderItem.findMany({
+                where : { orderId } ,
+                include : { product : true } ,
+                orderBy : { id : 'asc' }
+            })
+        }, TTL)
     }
     static async receiveQty(id , receivedQty) {
         const item = await prisma.orderItem.findUnique({ where : { id } })
@@ -88,10 +107,13 @@ class OrderItemService {
         if(receivedQty > item.quantity) {
             throw new AppError('Số lượng nhận thực tế không được vượt số lượng đặt' , 400)
         }
-        return await prisma.orderItem.update({
+        const updated = await prisma.orderItem.update({
             where : { id } ,
             data : { receivedQty }
         })
+        await deleteCache(byOrderKey(item.orderId))
+        await invalidateOrderCache(item.orderId)
+        return updated
     }
 }
 
