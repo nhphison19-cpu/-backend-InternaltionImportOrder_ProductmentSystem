@@ -11,7 +11,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
-# Nhóm các API theo từng module
 paths:
   /api/auth/login:
     post:
@@ -36,7 +35,7 @@ paths:
     post:
       summary: Đăng ký tài khoản (Admin only)
       tags: [Auth]
-      security: [{ bearerAuth: [] }] # Yêu cầu có quyền mới được gọi
+      security: [{ bearerAuth: [] }] 
       requestBody:
         required: true
         content:
@@ -50,7 +49,6 @@ paths:
                 role: { type: string, enum: [EMPLOYEE, ADMIN, MANAGER] }
       responses:
         201: { description: Đăng ký thành công }
-  # --- IMPORT ORDER ---
   /api/import-orders:
     get:
       summary: Lấy danh sách đơn hàng
@@ -61,7 +59,6 @@ paths:
       tags: [ImportOrder]
       security: [{ bearerAuth: [] }]
 
-  # --- INVENTORY ---
   /api/inventory:
     get:
       summary: Danh sách tồn kho
@@ -71,7 +68,6 @@ paths:
       tags: [Inventory]
       security: [{ bearerAuth: [] }]
 
-  # --- PRODUCT ---
   /api/products:
     get:
       summary: Lấy danh sách sản phẩm
@@ -81,34 +77,29 @@ paths:
       tags: [Product]
       security: [{ bearerAuth: [] }]
 
-  # --- SUPPLIER ---
   /api/suppliers:
     get:
       summary: Danh sách nhà cung cấp
       tags: [Supplier]
 
-  # --- EMPLOYEE ---
   /api/employees:
     get:
       summary: Danh sách nhân viên
       tags: [Employee]
       security: [{ bearerAuth: [] }]
 
-  # --- SHIPMENT ---
   /api/shipments:
     get:
       summary: Lấy danh sách vận đơn
       tags: [Shipment]
       security: [{ bearerAuth: [] }]
 
-  # --- PAYMENT ---
   /api/payments:
     post:
       summary: Ghi nhận thanh toán
       tags: [Payment]
       security: [{ bearerAuth: [] }]
 
-# Khai báo các nhãn để Swagger chia menu ở sidebar
 tags:
   - name: Auth
   - name: ImportOrder

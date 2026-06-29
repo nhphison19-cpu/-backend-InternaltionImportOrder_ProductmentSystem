@@ -12,9 +12,8 @@ const {
 } = require('../middlewares/validation/employeeSchemas');
 
 
-
-router.post('/create', validate(createEmployeeSchema), employeeController.createEmployee);
 router.use(authenticate)
+router.post('/create',authorize('ADMIN') ,validate(createEmployeeSchema), employeeController.createEmployee);
 router.get('/list', authorize('ADMIN', 'APPROVER'), validateQuery(listEmployeesQuerySchema), employeeController.listEmployees);
 router.get('/getdetail/:id', employeeController.getEmployee);
 router.patch('/update/:id', authorize('ADMIN'), validate(updateEmployeeSchema), employeeController.updateEmployee);

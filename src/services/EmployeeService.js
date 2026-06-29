@@ -4,7 +4,9 @@ const prisma = require('../config/prisma');
 const { AppError } = require('../middlewares/errorHandler');
 const { revokeAllForEmployee } = require('./tokenService');
 const {RedisClient, RedisBullMQ} = require('../config/redisConfig')
-const { getOrSetCache, deleteCache } = require('../utils/helpers/cacheHelper')
+const { getOrSetCache, deleteCache } = require('../utils/helpers/cacheHelper');
+const { is } = require('zod/locales');
+const { request } = require('express');
 
 const EMPLOYEE_CACHE_TTL = 300 // 5 minutes
 const employeeCacheKey = (id) => `employee:${id}`
@@ -20,9 +22,27 @@ const PUBLIC_FIELDS = {
   role: true,
 };
 class employeeService {
-  static  async  createEmployee({ name, email, password, department, role }) {
+  static  async  createEmployee({ name, email, password, department, role } , requester) {
           const existing = await prisma.employee.findUnique({ where: { email } });
           if (existing) throw new AppError('An employee with this email already exists', 409);
+
+            const employeeCount = await prisma.employee.count();
+            const isBootstrap = employeeCount === 0;
+
+          let finalRole = 'STAFF'
+
+          if(isBootstrap) {
+            finalRole = 'ADMIN'
+          }else {
+            if(!requester){
+              throw new AppError('Authentication required', 403);
+            }
+            if (requester.role !== 'ADMIN') {
+              throw new AppError('Only an ADMIN can create employees', 403);
+           }
+            finalRole = role || 'STAFF';
+          }
+
 
           const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
@@ -31,7 +51,7 @@ class employeeService {
                     email, 
                     password : passwordHash, 
                     department, 
-                    role: role || 'STAFF' 
+                    role: finalRole 
                   },
             select: PUBLIC_FIELDS,
           });

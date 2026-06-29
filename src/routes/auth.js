@@ -3,7 +3,9 @@ const bcrypt = require('bcrypt');
 const router = express.Router();
 const prisma = require('../config/prisma');
 const { asyncHandler } = require('../middlewares/asyncHandler');
-// Đảm bảo bạn đã export cả hàm 'sendError' trong file responseHelper.js của bạn
+const  { loginLimiter, refreshLimiter } = require('../middlewares/rateLimiters')
+
+
 const { success, created, paginated, sendError } = require('../utils/helpers/responseHelper'); 
 const {
   issueTokenPair,
@@ -12,7 +14,9 @@ const {
 } = require('../services/tokenService');
 
 router.post(
-  '/login',
+  '/login', 
+  loginLimiter
+  ,
   asyncHandler(async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -48,7 +52,9 @@ router.post(
 );
 
 router.post(
-  '/refresh',
+  '/refresh', 
+  refreshLimiter
+  ,
   asyncHandler(async (req, res) => {
     const incoming = req.cookies?.refreshToken || req.body.refreshToken;
     if (!incoming) {

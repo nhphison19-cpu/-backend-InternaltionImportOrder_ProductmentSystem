@@ -4,7 +4,6 @@ const mockFakeRedis = new FakeRedis();
 
 jest.mock('../../config/redisConfig', () => ({
   RedisClient: mockFakeRedis,
-  RedisBullMQ: mockFakeRedis,
 }));
 
 jest.mock('../../config/prisma', () => ({

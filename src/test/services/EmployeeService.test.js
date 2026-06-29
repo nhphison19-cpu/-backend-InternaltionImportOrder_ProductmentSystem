@@ -4,12 +4,13 @@ const mockFakeRedis = new FakeRedis();
 
 jest.mock('../../config/redisConfig', () => ({
   RedisClient: mockFakeRedis,
-  RedisBullMQ: mockFakeRedis,
 }));
 
 jest.mock('../../config/prisma', () => ({
   employee: {
     findUnique: jest.fn(),
+    count: jest.fn(),
+    create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
   },
@@ -30,6 +31,58 @@ describe('EmployeeService (Redis caching)', () => {
   beforeEach(() => {
     mockFakeRedis._reset();
     jest.clearAllMocks();
+  });
+
+  describe('createEmployee (bootstrap / ADMIN-only rule)', () => {
+    it('allows self-registration without a requester only when the table is empty (bootstrap)', async () => {
+      prisma.employee.count.mockResolvedValue(0);
+      prisma.employee.findUnique.mockResolvedValue(null);
+      prisma.employee.create.mockResolvedValue({ id: 'e1', role: 'ADMIN' });
+
+      const result = await EmployeeService.createEmployee(
+        { name: 'Boss', email: 'boss@co.com', password: 'pw' },
+        null
+      );
+
+      expect(result.role).toBe('ADMIN');
+      expect(prisma.employee.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ role: 'ADMIN' }) })
+      );
+    });
+
+    it('rejects unauthenticated creation once at least one employee already exists', async () => {
+      prisma.employee.count.mockResolvedValue(1);
+      prisma.employee.findUnique.mockResolvedValue(null);
+
+      await expect(
+        EmployeeService.createEmployee({ name: 'X', email: 'x@co.com', password: 'pw' }, null)
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('rejects creation from a non-ADMIN requester', async () => {
+      prisma.employee.count.mockResolvedValue(1);
+      prisma.employee.findUnique.mockResolvedValue(null);
+
+      await expect(
+        EmployeeService.createEmployee(
+          { name: 'X', email: 'x@co.com', password: 'pw' },
+          { role: 'STAFF' }
+        )
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it('allows creation from an authenticated ADMIN requester and defaults role to STAFF', async () => {
+      prisma.employee.count.mockResolvedValue(1);
+      prisma.employee.findUnique.mockResolvedValue(null);
+      prisma.employee.create.mockResolvedValue({ id: 'e2', role: 'STAFF' });
+
+      const result = await EmployeeService.createEmployee(
+        { name: 'New Staff', email: 'staff@co.com', password: 'pw' },
+        { role: 'ADMIN' }
+      );
+
+      expect(result.role).toBe('STAFF');
+    });
   });
 
   describe('getEmployeeById', () => {

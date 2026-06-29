@@ -4,13 +4,15 @@ const prisma = require('../config/prisma');
 
 const ACCESS_SECRET = process.env.ACCESS_TOKEN;
 
+const SAFE_FIELDS = { id: true, name: true, email: true, department: true, role: true };
+
+
 async function authenticate(req, res, next) {
   try {
     const header = req.headers.authorization;
     if (!header?.startsWith('Bearer ')) {
       throw new AppError('Missing or malformed Authorization header', 401);
     }
-
     const token = header.slice(7);
     const payload = jwt.verify(token, ACCESS_SECRET);
 
@@ -26,6 +28,31 @@ async function authenticate(req, res, next) {
   }
 }
 
+async function optionalAuthenticate(req , res , next) {
+  try {
+    const header = req.headers.authorization 
+    if(!header?.startsWith('Bearer ')) {
+      return next()
+    }
+    const token = header.slice(7)
+    const payload = jwt.verify(token , ACCESS_SECRET)
+    const employee = await prisma.employee.findUnique({
+      where : {
+        id : payload.sub ,
+        select : SAFE_FIELDS
+      } 
+    })
+    if(employee) {
+      req.user = employee
+    }
+    next()
+  }catch{
+    next()
+  }
+
+}
+
+
 function authorize(...allowedRoles) {
   return (req, res, next) => {
     if (!req.user) return next(new AppError('Not authenticated', 401));
@@ -36,4 +63,4 @@ function authorize(...allowedRoles) {
   };
 }
 
-module.exports = { authenticate, authorize };
+module.exports = { authenticate, optionalAuthenticate,authorize };

@@ -3,7 +3,7 @@ const { success, created, paginated } = require('../utils/helpers/responseHelper
 const employeeService = require('../services/EmployeeService');
 
 const createEmployee = asyncHandler(async (req, res) => {
-  const employee = await employeeService.createEmployee(req.body);
+  const employee = await employeeService.createEmployee(req.body , req.user || null);
   created(res, { message: 'Employee created successfully', data: employee });
 });
 
